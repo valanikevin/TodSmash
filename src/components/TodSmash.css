@@ -1,0 +1,98 @@
+.todsmash {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: background 1s ease;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: 'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive, sans-serif;
+}
+
+/* ===== Welcome Screen ===== */
+.welcome {
+  text-align: center;
+  animation: fadeIn 1s ease-out;
+  z-index: 10;
+}
+
+.welcome-emoji {
+  font-size: 100px;
+}
+
+.welcome-title {
+  font-size: 64px;
+  color: #555;
+  margin: 16px 0;
+}
+
+.welcome-subtitle {
+  font-size: 28px;
+  color: #888;
+}
+
+/* ===== Main Display ===== */
+.main-display {
+  text-align: center;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: gentleFadeIn 0.6s ease-out;
+}
+
+.big-emoji {
+  font-size: 140px;
+  line-height: 1.1;
+}
+
+.big-letter {
+  font-size: 120px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.word-display {
+  font-size: 52px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+/* ===== ANIMATIONS ===== */
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes gentleFadeIn {
+  0% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .big-letter { font-size: 80px; }
+  .big-emoji { font-size: 100px; }
+  .word-display { font-size: 36px; }
+  .welcome-title { font-size: 44px; }
+  .welcome-subtitle { font-size: 20px; }
+  .welcome-emoji { font-size: 70px; }
+}
+
+@media (max-width: 480px) {
+  .big-letter { font-size: 60px; }
+  .big-emoji { font-size: 80px; }
+  .word-display { font-size: 28px; }
+  .welcome-title { font-size: 32px; }
+  .welcome-subtitle { font-size: 16px; }
+}
