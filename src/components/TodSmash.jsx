@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import keyMappings, { getFallbackMapping } from '../data/keyMappings';
-import { playSoundForKey, speakWord } from '../utils/sounds';
+import { playSoundForKey } from '../utils/sounds';
 import './TodSmash.css';
 
 // Soft pastel backgrounds
@@ -23,10 +23,11 @@ const TodSmash = () => {
   const [closeBuffer, setCloseBuffer] = useState('');
   const [isExiting, setIsExiting] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const speakingRef = useRef(false);
   const closeBufferRef = useRef('');
   const isExitingRef = useRef(false);
+  // Tracks how many times each key has been pressed, so we cycle entries
+  const keyIndicesRef = useRef({});
 
   // Keep refs in sync with state
   useEffect(() => { closeBufferRef.current = closeBuffer; }, [closeBuffer]);
@@ -35,14 +36,16 @@ const TodSmash = () => {
   // Single unified keydown handler in capture phase
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Allow F11 for fullscreen
-      if (e.key === 'F11') return;
-
-      // Block ALL default browser behavior
+      // Block ALL default browser behavior and shortcuts
       e.preventDefault();
       e.stopPropagation();
 
       if (isExitingRef.current) return;
+
+      // Ensure we're in fullscreen on every key press
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      }
 
       // If still speaking, ignore new keys (low stimulation)
       if (speakingRef.current) return;
@@ -56,21 +59,15 @@ const TodSmash = () => {
         if (closeBufferRef.current.toLowerCase() === 'close') {
           isExitingRef.current = true;
           setIsExiting(true);
-          setCurrentDisplay({
-            letter: '👋',
-            word: 'Bye Bye!',
-            emoji: '👋',
-            color: '#FF6B6B',
-          });
-          speakWord('Bye bye! See you later!');
+          setCurrentDisplay({ letter: '👋', word: 'Bye Bye!', emoji: '👋', color: '#FF6B6B' });
+          if ('speechSynthesis' in window) {
+            const u = new SpeechSynthesisUtterance('Bye bye! See you later!');
+            u.rate = 0.8; u.pitch = 1.2;
+            window.speechSynthesis.speak(u);
+          }
           setTimeout(() => {
             window.close();
-            setCurrentDisplay({
-              letter: '👋',
-              word: 'You can close this tab now!',
-              emoji: '👋',
-              color: '#FF6B6B',
-            });
+            setCurrentDisplay({ letter: '👋', word: 'You can close this tab now!', emoji: '👋', color: '#FF6B6B' });
           }, 2000);
           return;
         }
@@ -86,11 +83,20 @@ const TodSmash = () => {
         closeBufferRef.current = newBuf;
       }
 
-      // Get mapping for this key
+      // Get the entries array for this key, then pick the next one in sequence
       const lowerKey = key.length === 1 ? key.toLowerCase() : key;
-      const mapping = keyMappings[lowerKey] || getFallbackMapping(key);
+      const entries = keyMappings[lowerKey];
 
-      // Set display — just one emoji, the letter, and the word
+      let mapping;
+      if (entries && entries.length > 0) {
+        const idx = (keyIndicesRef.current[lowerKey] ?? 0) % entries.length;
+        mapping = entries[idx];
+        keyIndicesRef.current[lowerKey] = idx + 1;
+      } else {
+        mapping = getFallbackMapping();
+      }
+
+      // Set display
       setCurrentDisplay({
         letter: key.length === 1 ? key.toUpperCase() : mapping.emoji,
         word: mapping.word,
@@ -106,9 +112,7 @@ const TodSmash = () => {
 
       // Lock input while speaking, then unlock when done
       speakingRef.current = true;
-      setIsSpeaking(true);
 
-      // Small pause, then speak the word
       setTimeout(() => {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
@@ -116,27 +120,16 @@ const TodSmash = () => {
           utterance.rate = 0.8;
           utterance.pitch = 1.2;
           utterance.volume = 1;
-          utterance.onend = () => {
-            speakingRef.current = false;
-            setIsSpeaking(false);
-          };
-          // Fallback timeout in case onend doesn't fire
           const fallback = setTimeout(() => {
             speakingRef.current = false;
-            setIsSpeaking(false);
-          }, 3000);
+          }, 3500);
           utterance.onend = () => {
             clearTimeout(fallback);
             speakingRef.current = false;
-            setIsSpeaking(false);
           };
           window.speechSynthesis.speak(utterance);
         } else {
-          // No speech support, just wait a moment
-          setTimeout(() => {
-            speakingRef.current = false;
-            setIsSpeaking(false);
-          }, 1000);
+          setTimeout(() => { speakingRef.current = false; }, 1000);
         }
       }, 200);
     };
@@ -150,16 +143,41 @@ const TodSmash = () => {
       }
     };
 
+    // Re-enter fullscreen any time it gets exited (e.g. Escape key exits fullscreen)
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && !isExitingRef.current) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+    };
+
+    // Re-enter fullscreen when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (!document.hidden && !document.fullscreenElement && !isExitingRef.current) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+    };
+
+    // Keep keyboard focus on the window at all times
+    const handleBlur = () => { window.focus(); };
+
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('keyup', blockKeyUp, true);
     window.addEventListener('contextmenu', blockContext, true);
     window.addEventListener('beforeunload', blockUnload);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('keyup', blockKeyUp, true);
       window.removeEventListener('contextmenu', blockContext, true);
       window.removeEventListener('beforeunload', blockUnload);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
     };
   }, []);
 
@@ -168,9 +186,17 @@ const TodSmash = () => {
       className="todsmash"
       style={{ background: bgColors[bgIndex] }}
       onClick={() => {
+        // Enter fullscreen on first click/tap
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.().catch(() => {});
+        }
         if (showWelcome) {
           setShowWelcome(false);
-          speakWord('Press any key!');
+          if ('speechSynthesis' in window) {
+            const u = new SpeechSynthesisUtterance('Press any key!');
+            u.rate = 0.8; u.pitch = 1.2;
+            window.speechSynthesis.speak(u);
+          }
         }
       }}
       tabIndex={0}
