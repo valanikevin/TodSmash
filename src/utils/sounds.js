@@ -148,6 +148,98 @@ const letterNotes = {
   t: 1760, u: 1976, v: 2093, w: 2349, x: 2637, y: 2794, z: 2960,
 };
 
+// Play a rich harmonious chord: root + perfect fifth + octave
+export const playChord = (rootFreq) => {
+  const ctx = getAudioContext();
+  [
+    { freq: rootFreq,        vol: 0.13, type: 'triangle' },
+    { freq: rootFreq * 1.5,  vol: 0.07, type: 'sine' },
+    { freq: rootFreq * 2,    vol: 0.04, type: 'sine' },
+  ].forEach(({ freq, vol, type }) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.75);
+  });
+};
+
+// ===== BACKGROUND MUSIC =====
+// Gentle looping pentatonic melody (C major pentatonic)
+const bgMelody = [
+  [524, 0.4], [659, 0.4], [784, 0.4], [659, 0.4],
+  [880, 0.6], [784, 0.2], [659, 0.8],
+  [524, 0.4], [587, 0.4], [659, 0.4], [784, 0.4],
+  [880, 0.5], [1047, 0.5],
+  [880, 0.4], [784, 0.4], [659, 0.4], [524, 1.0],
+];
+
+// Bass accompaniment (plays alongside melody)
+const bgBass = [
+  [131, 1.6], [147, 1.6], [131, 2.0],
+  [131, 1.8], [165, 1.8], [131, 2.0],
+];
+
+let bgRunning = false;
+let bgLoopTimeout = null;
+
+const playBgMelody = () => {
+  if (!bgRunning) return;
+  const ctx = getAudioContext();
+  let t = ctx.currentTime + 0.05;
+  let totalDur = 0;
+
+  bgMelody.forEach(([freq, dur]) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.032, t + 0.02);
+    gain.gain.linearRampToValueAtTime(0.032, t + dur * 0.75);
+    gain.gain.linearRampToValueAtTime(0, t + dur);
+    osc.start(t); osc.stop(t + dur + 0.01);
+    t += dur;
+    totalDur += dur;
+  });
+
+  // Soft bass drone alongside melody
+  let bt = ctx.currentTime + 0.05;
+  bgBass.forEach(([freq, dur]) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, bt);
+    gain.gain.setValueAtTime(0, bt);
+    gain.gain.linearRampToValueAtTime(0.018, bt + 0.05);
+    gain.gain.linearRampToValueAtTime(0.018, bt + dur * 0.8);
+    gain.gain.linearRampToValueAtTime(0, bt + dur);
+    osc.start(bt); osc.stop(bt + dur + 0.01);
+    bt += dur;
+  });
+
+  bgLoopTimeout = setTimeout(playBgMelody, (totalDur + 0.4) * 1000);
+};
+
+export const startBackgroundMusic = () => {
+  if (bgRunning) return;
+  bgRunning = true;
+  playBgMelody();
+};
+
+export const stopBackgroundMusic = () => {
+  bgRunning = false;
+  if (bgLoopTimeout) { clearTimeout(bgLoopTimeout); bgLoopTimeout = null; }
+};
+
 // Get which sound to play based on the key
 export const playSoundForKey = (key) => {
   const lowerKey = key.toLowerCase();
@@ -161,7 +253,7 @@ export const playSoundForKey = (key) => {
   } else if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(lowerKey)) {
     playBoing();
   } else if (letterNotes[lowerKey]) {
-    playNote(letterNotes[lowerKey]);
+    playChord(letterNotes[lowerKey]);
   } else {
     playPop();
   }

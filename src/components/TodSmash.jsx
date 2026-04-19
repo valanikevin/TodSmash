@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import keyMappings, { getFallbackMapping } from '../data/keyMappings';
-import { playSoundForKey } from '../utils/sounds';
+import { playSoundForKey, startBackgroundMusic, stopBackgroundMusic } from '../utils/sounds';
 import './TodSmash.css';
 
 // Soft pastel backgrounds
@@ -17,6 +17,15 @@ const bgColors = [
   'linear-gradient(135deg, #fff1c1 0%, #fffbe6 100%)',
 ];
 
+// Module-level: all letter keys (a–z) for random picks — derived from static import
+const allLetterKeys = Object.keys(keyMappings).filter(k => k.length === 1 && /[a-z]/.test(k));
+const getRandomMapping = () => {
+  const key = allLetterKeys[Math.floor(Math.random() * allLetterKeys.length)];
+  const entries = keyMappings[key];
+  const entry = entries[Math.floor(Math.random() * entries.length)];
+  return { mapping: entry, label: key.toUpperCase() };
+};
+
 const TodSmash = () => {
   const [currentDisplay, setCurrentDisplay] = useState(null);
   const [bgIndex, setBgIndex] = useState(0);
@@ -28,6 +37,10 @@ const TodSmash = () => {
   const isExitingRef = useRef(false);
   // Tracks how many times each key has been pressed, so we cycle entries
   const keyIndicesRef = useRef({});
+  const musicStartedRef = useRef(false);
+  // Prevents synthetic ghost-click firing after touchstart on the same interaction
+  const lastWasTouchRef = useRef(false);
+  const [particles, setParticles] = useState([]);
 
   // Keep refs in sync with state
   useEffect(() => { closeBufferRef.current = closeBuffer; }, [closeBuffer]);
@@ -35,6 +48,50 @@ const TodSmash = () => {
 
   // Single unified keydown handler in capture phase
   useEffect(() => {
+    // Shared: update display, spawn particles, speak word
+    const fireDisplay = (mapping, letterLabel) => {
+      setCurrentDisplay({
+        letter: letterLabel,
+        word: mapping.word,
+        emoji: mapping.emoji,
+        color: mapping.color,
+      });
+
+      setBgIndex((prev) => (prev + 1) % bgColors.length);
+
+      const SYMBOLS = ['♪', '♫', '🎵', '🎶', '✨', '💫', '⭐', '🌟'];
+      const count = 5 + Math.floor(Math.random() * 4);
+      const newParticles = Array.from({ length: count }, (_, i) => ({
+        id: Date.now() + i,
+        x: 5 + Math.random() * 88,
+        y: 50 + Math.random() * 40,
+        symbol: SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
+        color: mapping.color,
+        size: 22 + Math.floor(Math.random() * 26),
+        speed: (1.2 + Math.random() * 1.0).toFixed(2),
+      }));
+      setParticles(prev => [...prev, ...newParticles]);
+      setTimeout(() => {
+        setParticles(prev => prev.filter(p => !newParticles.some(np => np.id === p.id)));
+      }, 2500);
+
+      speakingRef.current = true;
+      setTimeout(() => {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(mapping.word);
+          utterance.rate = 0.8;
+          utterance.pitch = 1.2;
+          utterance.volume = 1;
+          const fallback = setTimeout(() => { speakingRef.current = false; }, 3500);
+          utterance.onend = () => { clearTimeout(fallback); speakingRef.current = false; };
+          window.speechSynthesis.speak(utterance);
+        } else {
+          setTimeout(() => { speakingRef.current = false; }, 1000);
+        }
+      }, 200);
+    };
+
     const handleKeyDown = (e) => {
       // Block ALL default browser behavior and shortcuts
       e.preventDefault();
@@ -45,6 +102,12 @@ const TodSmash = () => {
       // Ensure we're in fullscreen on every key press
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+
+      // Start background music on very first keypress (requires user gesture)
+      if (!musicStartedRef.current) {
+        musicStartedRef.current = true;
+        startBackgroundMusic();
       }
 
       // If still speaking, ignore new keys (low stimulation)
@@ -59,6 +122,7 @@ const TodSmash = () => {
         if (closeBufferRef.current.toLowerCase() === 'close') {
           isExitingRef.current = true;
           setIsExiting(true);
+          stopBackgroundMusic();
           setCurrentDisplay({ letter: '👋', word: 'Bye Bye!', emoji: '👋', color: '#FF6B6B' });
           if ('speechSynthesis' in window) {
             const u = new SpeechSynthesisUtterance('Bye bye! See you later!');
@@ -87,51 +151,57 @@ const TodSmash = () => {
       const lowerKey = key.length === 1 ? key.toLowerCase() : key;
       const entries = keyMappings[lowerKey];
 
-      let mapping;
+      let mapping, letterLabel;
       if (entries && entries.length > 0) {
         const idx = (keyIndicesRef.current[lowerKey] ?? 0) % entries.length;
         mapping = entries[idx];
         keyIndicesRef.current[lowerKey] = idx + 1;
+        letterLabel = key.length === 1 ? key.toUpperCase() : mapping.emoji;
       } else {
         mapping = getFallbackMapping();
+        letterLabel = mapping.emoji;
       }
 
-      // Set display
-      setCurrentDisplay({
-        letter: key.length === 1 ? key.toUpperCase() : mapping.emoji,
-        word: mapping.word,
-        emoji: mapping.emoji,
-        color: mapping.color,
-      });
-
-      // Gentle background change
-      setBgIndex((prev) => (prev + 1) % bgColors.length);
-
-      // Play a gentle sound
       playSoundForKey(key);
+      fireDisplay(mapping, letterLabel);
+    };
 
-      // Lock input while speaking, then unlock when done
-      speakingRef.current = true;
+    // Shared random-word handler — used by both touch and click
+    const fireRandom = () => {
+      if (isExitingRef.current) return;
 
-      setTimeout(() => {
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(mapping.word);
-          utterance.rate = 0.8;
-          utterance.pitch = 1.2;
-          utterance.volume = 1;
-          const fallback = setTimeout(() => {
-            speakingRef.current = false;
-          }, 3500);
-          utterance.onend = () => {
-            clearTimeout(fallback);
-            speakingRef.current = false;
-          };
-          window.speechSynthesis.speak(utterance);
-        } else {
-          setTimeout(() => { speakingRef.current = false; }, 1000);
-        }
-      }, 200);
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+
+      if (!musicStartedRef.current) {
+        musicStartedRef.current = true;
+        startBackgroundMusic();
+      }
+
+      if (speakingRef.current) return;
+
+      setShowWelcome(false);
+
+      const { mapping, label } = getRandomMapping();
+      playSoundForKey(label.toLowerCase());
+      fireDisplay(mapping, label);
+    };
+
+    // Touch handler — fires random word on every tap
+    const handleTouch = (e) => {
+      e.preventDefault();
+      // Mark this interaction as touch so the follow-up synthetic click is ignored
+      lastWasTouchRef.current = true;
+      setTimeout(() => { lastWasTouchRef.current = false; }, 500);
+      fireRandom();
+    };
+
+    // Mouse click handler — fires random word on every click
+    // Skipped when the click is a ghost-click generated after a touchstart
+    const handleClick = () => {
+      if (lastWasTouchRef.current) return;
+      fireRandom();
     };
 
     const blockKeyUp = (e) => { e.preventDefault(); e.stopPropagation(); };
@@ -168,6 +238,10 @@ const TodSmash = () => {
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleBlur);
+    // Touch: passive:false so we can call e.preventDefault()
+    document.addEventListener('touchstart', handleTouch, { passive: false });
+    // Click: covers mouse clicks and pointer devices
+    document.addEventListener('click', handleClick);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
@@ -178,6 +252,8 @@ const TodSmash = () => {
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('touchstart', handleTouch);
+      document.removeEventListener('click', handleClick);
     };
   }, []);
 
@@ -185,20 +261,8 @@ const TodSmash = () => {
     <div
       className="todsmash"
       style={{ background: bgColors[bgIndex] }}
-      onClick={() => {
-        // Enter fullscreen on first click/tap
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen?.().catch(() => {});
-        }
-        if (showWelcome) {
-          setShowWelcome(false);
-          if ('speechSynthesis' in window) {
-            const u = new SpeechSynthesisUtterance('Press any key!');
-            u.rate = 0.8; u.pitch = 1.2;
-            window.speechSynthesis.speak(u);
-          }
-        }
-      }}
+      // onClick intentionally omitted — handled by the document 'click' listener
+      // which has access to fireDisplay and correctly deduplicates touch events
       tabIndex={0}
     >
       {/* Welcome screen */}
@@ -206,9 +270,26 @@ const TodSmash = () => {
         <div className="welcome">
           <div className="welcome-emoji">🎮</div>
           <h1 className="welcome-title">TodSmash!</h1>
-          <p className="welcome-subtitle">Press any key to play!</p>
+          <p className="welcome-subtitle">Tap or press any key!</p>
         </div>
       )}
+
+      {/* Floating music note particles */}
+      {particles.map(p => (
+        <span
+          key={p.id}
+          className="particle"
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            color: p.color,
+            fontSize: `${p.size}px`,
+            animationDuration: `${p.speed}s`,
+          }}
+        >
+          {p.symbol}
+        </span>
+      ))}
 
       {/* Main display — single emoji, letter, and word */}
       {currentDisplay && !showWelcome && (
