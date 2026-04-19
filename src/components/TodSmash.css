@@ -21,20 +21,22 @@
   text-align: center;
   animation: fadeIn 1s ease-out;
   z-index: 10;
+  padding: 0 4vw;
 }
 
 .welcome-emoji {
-  font-size: 100px;
+  /* Fluid: ~20% of the smaller screen dimension, capped nicely */
+  font-size: clamp(80px, 22vmin, 200px);
 }
 
 .welcome-title {
-  font-size: 64px;
+  font-size: clamp(36px, 10vmin, 100px);
   color: #555;
-  margin: 16px 0;
+  margin: 2vmin 0;
 }
 
 .welcome-subtitle {
-  font-size: 28px;
+  font-size: clamp(18px, 4.5vmin, 52px);
   color: #888;
 }
 
@@ -45,24 +47,28 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: clamp(8px, 2vmin, 24px);
   animation: gentleFadeIn 0.6s ease-out;
+  /* Keep it inside the viewport on short/wide screens */
+  max-height: 95vh;
+  justify-content: center;
 }
 
 .big-emoji {
-  font-size: 140px;
-  line-height: 1.1;
+  /* Fill most of the screen — babies love enormous emojis */
+  font-size: clamp(160px, 42vmin, 440px);
+  line-height: 1.05;
 }
 
 .big-letter {
-  font-size: 120px;
+  font-size: clamp(72px, 18vmin, 200px);
   font-weight: 800;
   line-height: 1;
   opacity: 0.85;
 }
 
 .word-display {
-  font-size: 52px;
+  font-size: clamp(34px, 8vmin, 100px);
   font-weight: 700;
   opacity: 0.9;
 }
@@ -98,19 +104,9 @@
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 768px) {
-  .big-letter { font-size: 80px; }
-  .big-emoji { font-size: 100px; }
-  .word-display { font-size: 36px; }
-  .welcome-title { font-size: 44px; }
-  .welcome-subtitle { font-size: 20px; }
-  .welcome-emoji { font-size: 70px; }
-}
-
-@media (max-width: 480px) {
-  .big-letter { font-size: 60px; }
-  .big-emoji { font-size: 80px; }
-  .word-display { font-size: 28px; }
-  .welcome-title { font-size: 32px; }
-  .welcome-subtitle { font-size: 16px; }
+/* Landscape phones: emoji would overflow — shrink slightly */
+@media (max-height: 500px) {
+  .big-emoji   { font-size: clamp(80px, 30vh, 200px); }
+  .big-letter  { font-size: clamp(48px, 14vh, 100px); }
+  .word-display { font-size: clamp(22px, 6vh,  60px); }
 }
